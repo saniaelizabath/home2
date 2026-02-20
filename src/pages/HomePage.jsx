@@ -686,7 +686,7 @@ const FEATURE_GIFS = [
 ];
 
 const FEATURES_WITH_GIFS = [
-  { ...{ icon: "🎥", title: "Live Online Classes", desc: "Real-time interactive classes with expert commerce teachers — ask questions on the spot, just like a physical classroom but from home.", bg: "#E8EEFF", color: "#3B5BDB" }, gif: liveClassGif, side: "left" },
+  { ...{ icon: "🎥", title: "Live Online Classes Group & Individual", desc: "Real-time interactive classes with expert commerce teachers — ask questions on the spot, just like a physical classroom but from home.", bg: "#E8EEFF", color: "#3B5BDB" }, gif: liveClassGif, side: "left" },
   { ...{ icon: "📝", title: "Regular Tests & Revision", desc: "Frequent chapter-wise and unit tests in the exact CBSE board pattern — MCQs, short answers, and case-based questions with revision notes.", bg: "#FFF0F0", color: "#FF6B6B" }, gif: boardExamPrep2Gif, side: "right" },
   { ...{ icon: "📋", title: "Academic Progress Reports", desc: "Detailed reports tracking every student's performance across tests, attendance, and assignments — so nothing slips through the cracks.", bg: "#E6FCF5", color: "#20C997" }, gif: laptopGif, side: "left" },
   { ...{ icon: "👨‍👩‍👧", title: "Parent Notifications", desc: "Parents stay in the loop with timely progress updates, test results, and attendance notifications.", bg: "#FFF9DB", color: "#e67700" }, gif: progressGif, side: "right" },
