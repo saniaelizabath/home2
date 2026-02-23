@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { gsap } from "gsap";
+import RoleSelectModal from "../pages/auth/RoleSelectModal";
 import "./PillNav.css";
 
 const PillNav = ({
@@ -20,6 +21,7 @@ const PillNav = ({
 }) => {
   const resolvedPillTextColor = pillTextColor ?? baseColor;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const circleRefs = useRef([]);
   const tlRefs = useRef([]);
   const activeTweenRefs = useRef([]);
@@ -222,6 +224,20 @@ const PillNav = ({
 
   const isRouterLink = (href) => href && !isExternalLink(href);
 
+  const isRoleActionItem = (item) => {
+    const label = (item?.label ?? "").toLowerCase();
+    return label.includes("login") && label.includes("signup");
+  };
+
+  const openRoleModal = () => {
+    setIsMobileMenuOpen(false);
+    setIsRoleModalOpen(true);
+    const menu = mobileMenuRef.current;
+    if (menu) {
+      gsap.set(menu, { visibility: "hidden", opacity: 0, y: 10, scaleY: 1 });
+    }
+  };
+
   const cssVars = {
     "--base": baseColor,
     "--pill-bg": pillColor,
@@ -275,6 +291,12 @@ const PillNav = ({
                     aria-label={item.ariaLabel || item.label}
                     onMouseEnter={() => handleEnter(i)}
                     onMouseLeave={() => handleLeave(i)}
+                    onClick={(e) => {
+                      if (isRoleActionItem(item)) {
+                        e.preventDefault();
+                        openRoleModal();
+                      }
+                    }}
                   >
                     <span
                       className="hover-circle"
@@ -298,6 +320,12 @@ const PillNav = ({
                     aria-label={item.ariaLabel || item.label}
                     onMouseEnter={() => handleEnter(i)}
                     onMouseLeave={() => handleLeave(i)}
+                    onClick={(e) => {
+                      if (isRoleActionItem(item)) {
+                        e.preventDefault();
+                        openRoleModal();
+                      }
+                    }}
                   >
                     <span
                       className="hover-circle"
@@ -339,7 +367,14 @@ const PillNav = ({
                 <Link
                   to={item.href}
                   className={`mobile-menu-link${activeHref === item.href ? " is-active" : ""}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    if (isRoleActionItem(item)) {
+                      e.preventDefault();
+                      openRoleModal();
+                      return;
+                    }
+                    setIsMobileMenuOpen(false);
+                  }}
                 >
                   {item.label}
                 </Link>
@@ -347,7 +382,14 @@ const PillNav = ({
                 <a
                   href={item.href}
                   className={`mobile-menu-link${activeHref === item.href ? " is-active" : ""}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    if (isRoleActionItem(item)) {
+                      e.preventDefault();
+                      openRoleModal();
+                      return;
+                    }
+                    setIsMobileMenuOpen(false);
+                  }}
                 >
                   {item.label}
                 </a>
@@ -356,6 +398,8 @@ const PillNav = ({
           ))}
         </ul>
       </div>
+
+      {isRoleModalOpen && <RoleSelectModal onClose={() => setIsRoleModalOpen(false)} />}
     </div>
   );
 };
