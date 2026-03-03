@@ -1,94 +1,151 @@
+import { useState, useEffect } from "react";
 import DashboardLayout from "../../components/shared/DashboardLayout";
-
-const BATCHES = [
-    { name: "Accountancy – Class 12 – Batch A", students: 18, avgScore: 76, topScore: 94, attendance: 82 },
-    { name: "Accountancy – Class 11 – Batch B", students: 16, avgScore: 71, topScore: 89, attendance: 78 },
-    { name: "Business Studies – Class 12 – Batch A", students: 22, avgScore: 80, topScore: 97, attendance: 88 },
-];
-
-const SENT_EMAILS = [
-    { batch: "Accountancy – Class 12", date: "Feb 1", type: "Monthly Progress Report" },
-    { batch: "Business Studies – Class 12", date: "Feb 1", type: "Monthly Progress Report" },
-    { batch: "All Students", date: "Jan 15", type: "Mid-term Marks Summary" },
-];
+import { db } from "../../firebase";
+import { collection, getDocs, query, where, orderBy, addDoc, serverTimestamp } from "firebase/firestore";
+import Papa from "papaparse";
+import useIsMobile from "../../hooks/useIsMobile";
 
 export default function Reports() {
-    const downloadCSV = () => {
-        const rows = [
-            ["Batch", "Students", "Avg Score", "Top Score", "Attendance"],
-            ...BATCHES.map(b => [b.name, b.students, `${b.avgScore}%`, `${b.topScore}%`, `${b.attendance}%`]),
-        ];
-        const csv = rows.map(r => r.join(",")).join("\n");
-        const blob = new Blob([csv], { type: "text/csv" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "performance_report.csv";
-        a.click();
+    const isMobile = useIsMobile(900);
+    const [courses, setCourses] = useState([]);
+    const [selectedCourse, setSelectedCourse] = useState("all");
+    const [reportType, setReportType] = useState("attendance");
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [startDate, setStartDate] = useState("");
+    const [endDate, setEndDate] = useState("");
+
+    useEffect(() => {
+        getDocs(collection(db, "courses")).then(snap => setCourses(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    }, []);
+
+    const generate = async () => {
+        setLoading(true);
+        setData([]);
+        try {
+            if (reportType === "attendance") {
+                let q = query(collection(db, "attendance"), orderBy("date", "desc"));
+                if (selectedCourse !== "all") q = query(collection(db, "attendance"), where("courseId", "==", selectedCourse), orderBy("date", "desc"));
+                const snap = await getDocs(q);
+                let records = snap.docs.map(d => d.data());
+                if (startDate) records = records.filter(r => { const d = r.date?.toDate ? r.date.toDate() : new Date(r.date); return d >= new Date(startDate); });
+                if (endDate) records = records.filter(r => { const d = r.date?.toDate ? r.date.toDate() : new Date(r.date); return d <= new Date(endDate + "T23:59:59"); });
+                // Fetch student names
+                const studentIds = [...new Set(records.map(r => r.studentId))];
+                const studentMap = {};
+                await Promise.all(studentIds.slice(0, 20).map(async uid => {
+                    const s = await getDocs(query(collection(db, "students"), where("__name__", "==", uid)));
+                    studentMap[uid] = s.docs[0]?.data()?.name || uid;
+                }));
+                setData(records.map(r => ({
+                    Student: studentMap[r.studentId] || r.studentId,
+                    Course: r.courseId,
+                    Date: (r.date?.toDate ? r.date.toDate() : new Date(r.date)).toLocaleDateString("en-IN"),
+                    Status: r.status,
+                })));
+            } else {
+                let q = query(collection(db, "testScores"), orderBy("submittedAt", "desc"));
+                if (selectedCourse !== "all") q = query(collection(db, "testScores"), where("courseId", "==", selectedCourse), orderBy("submittedAt", "desc"));
+                const snap = await getDocs(q);
+                const records = snap.docs.map(d => d.data());
+                setData(records.map(r => ({
+                    Student: r.studentName || r.studentId,
+                    Test: r.testName || "Test",
+                    Score: r.score,
+                    MaxMarks: r.max,
+                    Percentage: Math.round((r.score / r.max) * 100) + "%",
+                    Date: r.submittedAt ? (r.submittedAt.toDate ? r.submittedAt.toDate() : new Date(r.submittedAt)).toLocaleDateString("en-IN") : "—",
+                })));
+            }
+        } catch (e) { console.error(e); }
+        finally { setLoading(false); }
     };
+
+    const exportCSV = () => {
+        if (!data.length) return;
+        const csv = Papa.unparse(data);
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `${reportType}_report_${new Date().toISOString().split("T")[0]}.csv`;
+        a.click(); URL.revokeObjectURL(url);
+    };
+
+    const headers = data.length ? Object.keys(data[0]) : [];
 
     return (
         <DashboardLayout>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
-                <div>
-                    <h1 style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 900, color: "#1a1a2e", marginBottom: 6 }}>Reports & Analytics</h1>
-                    <p style={{ color: "#888" }}>Platform-wide performance and progress data</p>
-                </div>
-                <button onClick={downloadCSV} style={{ padding: "12px 24px", borderRadius: 30, background: "#3B5BDB", color: "#fff", fontWeight: 800, fontSize: 14, border: "none", cursor: "pointer", boxShadow: "0 4px 16px #3B5BDB44" }}>
-                    ⬇️ Export CSV
-                </button>
-            </div>
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 900, color: "#1a1a2e", marginBottom: 6 }}>Reports</h1>
+            <p style={{ color: "#888", marginBottom: 28 }}>Generate and export attendance and progress reports</p>
 
-            {/* Batch performance cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 20, marginBottom: 28 }}>
-                {BATCHES.map(b => (
-                    <div key={b.name} style={{ background: "#fff", borderRadius: 24, padding: 24, boxShadow: "0 4px 20px rgba(0,0,0,0.07)" }}>
-                        <div style={{ fontWeight: 800, fontSize: 14, color: "#1a1a2e", marginBottom: 16 }}>{b.name}</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                            {[
-                                { label: "Students", value: b.students, color: "#3B5BDB" },
-                                { label: "Avg Score", value: `${b.avgScore}%`, color: "#20C997" },
-                                { label: "Top Score", value: `${b.topScore}%`, color: "#7048e8" },
-                                { label: "Attendance", value: `${b.attendance}%`, color: b.attendance >= 75 ? "#20C997" : "#FF6B6B" },
-                            ].map(s => (
-                                <div key={s.label} style={{ padding: "12px 14px", borderRadius: 12, background: "#f8f9ff" }}>
-                                    <div style={{ fontSize: 18, fontWeight: 900, color: s.color, fontFamily: "var(--font-display)" }}>{s.value}</div>
-                                    <div style={{ fontSize: 11, color: "#aaa", fontWeight: 600 }}>{s.label}</div>
-                                </div>
-                            ))}
-                        </div>
-                        {/* Progress bar */}
-                        <div style={{ fontSize: 11, color: "#888", fontWeight: 700, marginBottom: 6 }}>AVG SCORE</div>
-                        <div style={{ background: "#f0f2ff", borderRadius: 30, height: 8 }}>
-                            <div style={{ height: 8, borderRadius: 30, background: "linear-gradient(90deg,#3B5BDB,#7048e8)", width: `${b.avgScore}%`, transition: "width 0.5s" }} />
-                        </div>
+            {/* Filters */}
+            <div style={{ background: "#fff", borderRadius: 20, padding: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.07)", marginBottom: 24 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4,1fr)", gap: 14, marginBottom: 16 }}>
+                    <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 6 }}>REPORT TYPE</label>
+                        <select value={reportType} onChange={e => setReportType(e.target.value)} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "2px solid #eee", fontSize: 14, outline: "none" }}>
+                            <option value="attendance">Attendance</option>
+                            <option value="progress">Test Scores / Progress</option>
+                        </select>
                     </div>
-                ))}
+                    <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 6 }}>COURSE</label>
+                        <select value={selectedCourse} onChange={e => setSelectedCourse(e.target.value)} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "2px solid #eee", fontSize: 14, outline: "none" }}>
+                            <option value="all">All Courses</option>
+                            {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 6 }}>FROM DATE</label>
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "2px solid #eee", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 6 }}>TO DATE</label>
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "2px solid #eee", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                    </div>
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                    <button onClick={generate} disabled={loading} style={{ padding: "12px 28px", borderRadius: 30, background: "#3B5BDB", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+                        {loading ? "Generating…" : "🔍 Generate Report"}
+                    </button>
+                    {data.length > 0 && (
+                        <button onClick={exportCSV} style={{ padding: "12px 28px", borderRadius: 30, background: "#20C997", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+                            ⬇️ Export CSV
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* Email log */}
-            <div style={{ background: "#fff", borderRadius: 24, padding: 28, boxShadow: "0 4px 24px rgba(0,0,0,0.07)" }}>
-                <div style={{ fontWeight: 800, fontSize: 16, color: "#1a1a2e", marginBottom: 18 }}>📧 Auto-Email Log</div>
-                <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            {/* Results table */}
+            {data.length > 0 && (
+                <div style={{ background: "#fff", borderRadius: 20, padding: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.07)", overflowX: "auto" }}>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: "#1a1a2e", marginBottom: 16 }}>{data.length} record{data.length !== 1 ? "s" : ""} found</div>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                         <thead>
                             <tr style={{ background: "#f8f9ff" }}>
-                                {["Batch", "Email Type", "Sent On"].map(h => (
-                                    <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase" }}>{h}</th>
-                                ))}
+                                {headers.map(h => <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, color: "#888", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>{h}</th>)}
                             </tr>
                         </thead>
                         <tbody>
-                            {SENT_EMAILS.map((e, i) => (
+                            {data.map((row, i) => (
                                 <tr key={i} style={{ borderBottom: "1px solid #f5f5f5" }}>
-                                    <td style={{ padding: "12px 14px", fontWeight: 700, color: "#1a1a2e", fontSize: 14 }}>{e.batch}</td>
-                                    <td style={{ padding: "12px 14px", color: "#555", fontSize: 13 }}>{e.type}</td>
-                                    <td style={{ padding: "12px 14px", fontSize: 13, color: "#888" }}>{e.date} 2026</td>
+                                    {headers.map(h => (
+                                        <td key={h} style={{ padding: "13px 16px", color: h === "Status" && row[h] === "Absent" ? "#FF6B6B" : h === "Status" && row[h] === "Present" ? "#20C997" : "#1a1a2e", fontWeight: h === "Student" ? 700 : 400 }}>
+                                            {row[h]}
+                                        </td>
+                                    ))}
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            )}
+            {!loading && data.length === 0 && (
+                <div style={{ textAlign: "center", padding: 48, color: "#aaa" }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+                    <div style={{ fontWeight: 700 }}>Select filters and click "Generate Report"</div>
+                </div>
+            )}
         </DashboardLayout>
     );
 }

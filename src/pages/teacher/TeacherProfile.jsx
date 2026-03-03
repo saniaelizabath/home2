@@ -1,132 +1,129 @@
+import { useState, useEffect } from "react";
 import DashboardLayout from "../../components/shared/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
-
-const PROFILE_ITEMS = [
-  { key: "name", label: "Name", icon: "ID", color: "#20C997", bg: "#E6FCF5" },
-  { key: "email", label: "Email", icon: "@", color: "#3B5BDB", bg: "#E8EEFF" },
-  { key: "phone", label: "Phone", icon: "PH", color: "#e67700", bg: "#FFF9DB" },
-  { key: "subject", label: "Subject", icon: "SB", color: "#7048e8", bg: "#F3F0FF" },
-];
+import { db } from "../../firebase";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default function TeacherProfile() {
-  const { user } = useAuth();
+  const { user, login } = useAuth();
+  const [profile, setProfile] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const tid = user?.id || user?.uid;
+    if (!tid) { setLoading(false); return; }
+    getDoc(doc(db, "teachers", tid))
+      .then(snap => {
+        if (snap.exists()) {
+          setProfile(snap.data());
+          setForm(snap.data());
+        } else {
+          setProfile(user);
+          setForm(user);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [user?.id, user?.uid, user]);
+
+  const save = async () => {
+    const tid = user?.id || user?.uid;
+    if (!tid) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "teachers", tid), {
+        name: form.name,
+        phone: form.phone,
+        subject: form.subject,
+        email: form.email,
+      });
+      setProfile(f => ({ ...f, ...form }));
+      // Also update the local storage user context so header shows updated name
+      if (login && user) {
+        login({ ...user, ...form });
+      }
+      setEditing(false);
+    } catch (e) {
+      console.error(e);
+      alert("Save failed: " + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const data = profile ?? user ?? {};
+
+  if (loading) {
+    return <DashboardLayout><div style={{ padding: 40, color: "#aaa" }}>Loading profile…</div></DashboardLayout>;
+  }
+
+  const fieldStyle = { width: "100%", padding: "12px 14px", borderRadius: 12, border: "2px solid #eee", fontSize: 14, outline: "none", background: "#fafbff", boxSizing: "border-box", fontFamily: "var(--font-body)" };
 
   return (
     <DashboardLayout>
-      <div style={{ maxWidth: 860 }}>
-        <h1
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 30,
-            fontWeight: 900,
-            color: "#1a1a2e",
-            marginBottom: 6,
-          }}
-        >
-          Teacher Profile
-        </h1>
-        <p style={{ color: "#888", marginBottom: 26 }}>
-          Personal profile and teaching information
-        </p>
+      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 900, color: "#1a1a2e", marginBottom: 6 }}>My Profile</h1>
+      <p style={{ color: "#888", marginBottom: 32 }}>Your teacher account details</p>
 
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: 24,
-            padding: 28,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.07)",
-            marginBottom: 20,
-            display: "flex",
-            alignItems: "center",
-            gap: 18,
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            style={{
-              width: 84,
-              height: 84,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg,#20C997,#0fa174)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontWeight: 900,
-              fontSize: 32,
-            }}
-          >
-            {(user?.name?.[0] ?? "T").toUpperCase()}
+      <div style={{ maxWidth: 600 }}>
+        <div style={{ background: "#fff", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.07)", marginBottom: 24 }}>
+          {/* Avatar + name */}
+          <div style={{ display: "flex", gap: 20, alignItems: "center", marginBottom: 28 }}>
+            <div style={{ width: 72, height: 72, borderRadius: "50%", background: "linear-gradient(135deg,#20C997,#3B5BDB)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#fff", fontWeight: 900, flexShrink: 0 }}>
+              {(data.name || "T")[0].toUpperCase()}
+            </div>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: 20, color: "#1a1a2e" }}>{data.name}</div>
+              <div style={{ fontSize: 13, color: "#888" }}>{data.subject || "Subject not set"}</div>
+            </div>
           </div>
-          <div>
-            <h2
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-display)",
-                fontSize: 28,
-                lineHeight: 1.1,
-                color: "#1a1a2e",
-              }}
-            >
-              {user?.name ?? "Teacher"}
-            </h2>
-            <p style={{ margin: "8px 0 0", color: "#64748B", fontWeight: 600 }}>
-              {user?.subject ?? "Subject not set"}
-            </p>
-          </div>
-        </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))",
-            gap: 14,
-          }}
-        >
-          {PROFILE_ITEMS.map((item) => (
-            <div
-              key={item.key}
-              style={{
-                background: "#fff",
-                borderRadius: 16,
-                padding: 16,
-                boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
-              }}
-            >
-              <div
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 10,
-                  background: item.bg,
-                  color: item.color,
-                  fontWeight: 800,
-                  fontSize: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: 10,
-                }}
-              >
-                {item.icon}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#94A3B8",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  marginBottom: 5,
-                }}
-              >
-                {item.label}
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>
-                {user?.[item.key] || "-"}
+          {editing ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {[
+                { label: "Full Name", key: "name" },
+                { label: "Email", key: "email", type: "email" },
+                { label: "Phone", key: "phone" },
+                { label: "Subject", key: "subject" },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 6 }}>{f.label.toUpperCase()}</label>
+                  <input type={f.type || "text"} value={form[f.key] || ""}
+                    onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    style={fieldStyle}
+                    onFocus={e => e.target.style.border = "2px solid #3B5BDB"}
+                    onBlur={e => e.target.style.border = "2px solid #eee"} />
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                <button onClick={save} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, background: "#3B5BDB", color: "#fff", fontWeight: 800, border: "none", cursor: "pointer" }}>
+                  {saving ? "Saving…" : "Save Changes"}
+                </button>
+                <button onClick={() => setEditing(false)} style={{ flex: 1, padding: "13px", borderRadius: 12, background: "#f0f2ff", color: "#3B5BDB", fontWeight: 800, border: "none", cursor: "pointer" }}>Cancel</button>
               </div>
             </div>
-          ))}
+          ) : (
+            <div>
+              {[
+                { label: "Email", value: data.email, icon: "✉️" },
+                { label: "Phone", value: data.phone, icon: "📱" },
+                { label: "Subject", value: data.subject, icon: "📚" },
+              ].map(f => f.value && (
+                <div key={f.label} style={{ display: "flex", gap: 14, padding: "14px 0", borderBottom: "1px solid #f5f5f5", alignItems: "center" }}>
+                  <span style={{ fontSize: 20 }}>{f.icon}</span>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#aaa", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>{f.label}</div>
+                    <div style={{ fontWeight: 700, color: "#1a1a2e", marginTop: 2 }}>{f.value}</div>
+                  </div>
+                </div>
+              ))}
+              <button onClick={() => setEditing(true)} style={{ marginTop: 24, padding: "12px 28px", borderRadius: 30, background: "#3B5BDB", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+                ✏️ Edit Profile
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>

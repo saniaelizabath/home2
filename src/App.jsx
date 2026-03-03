@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import HomePage from "./pages/HomePage";
+import PrivateRoute from "./components/shared/PrivateRoute";
 
 // Auth
 import RoleSelectModal from "./pages/auth/RoleSelectModal";
@@ -49,33 +50,33 @@ function App() {
 
         {/* Student */}
         <Route path="/student/register" element={<StudentRegister />} />
-        <Route path="/student/dashboard" element={<StudentDashboard />} />
-        <Route path="/student/profile" element={<StudentProfile />} />
-        <Route path="/student/classes" element={<ClassDashboard />} />
-        <Route path="/student/progress" element={<ProgressDashboard />} />
-        <Route path="/student/chat" element={<StudentChat />} />
-        <Route path="/student/tasks" element={<TaskScheduler />} />
-        <Route path="/student/attendance" element={<StudentAttendance />} />
+        <Route path="/student/dashboard" element={<PrivateRoute role="student"><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/profile" element={<PrivateRoute role="student"><StudentProfile /></PrivateRoute>} />
+        <Route path="/student/classes" element={<PrivateRoute role="student"><ClassDashboard /></PrivateRoute>} />
+        <Route path="/student/progress" element={<PrivateRoute role="student"><ProgressDashboard /></PrivateRoute>} />
+        <Route path="/student/chat" element={<PrivateRoute role="student"><StudentChat /></PrivateRoute>} />
+        <Route path="/student/tasks" element={<PrivateRoute role="student"><TaskScheduler /></PrivateRoute>} />
+        <Route path="/student/attendance" element={<PrivateRoute role="student"><StudentAttendance /></PrivateRoute>} />
 
         {/* Teacher */}
         <Route path="/teacher/register" element={<TeacherRegister />} />
-        <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
-        <Route path="/teacher/profile" element={<TeacherProfile />} />
-        <Route path="/teacher/classes" element={<ClassManagement />} />
-        <Route path="/teacher/content" element={<AcademicContent />} />
-        <Route path="/teacher/evaluation" element={<Evaluation />} />
-        <Route path="/teacher/chat" element={<TeacherChat />} />
-        <Route path="/teacher/syllabus" element={<Syllabus />} />
-        <Route path="/teacher/attendance" element={<TeacherAttendance />} />
+        <Route path="/teacher/dashboard" element={<PrivateRoute role="teacher"><TeacherDashboard /></PrivateRoute>} />
+        <Route path="/teacher/profile" element={<PrivateRoute role="teacher"><TeacherProfile /></PrivateRoute>} />
+        <Route path="/teacher/classes" element={<PrivateRoute role="teacher"><ClassManagement /></PrivateRoute>} />
+        <Route path="/teacher/content" element={<PrivateRoute role="teacher"><AcademicContent /></PrivateRoute>} />
+        <Route path="/teacher/evaluation" element={<PrivateRoute role="teacher"><Evaluation /></PrivateRoute>} />
+        <Route path="/teacher/chat" element={<PrivateRoute role="teacher"><TeacherChat /></PrivateRoute>} />
+        <Route path="/teacher/syllabus" element={<PrivateRoute role="teacher"><Syllabus /></PrivateRoute>} />
+        <Route path="/teacher/attendance" element={<PrivateRoute role="teacher"><TeacherAttendance /></PrivateRoute>} />
 
         {/* Admin */}
-        <Route path="/admin/dashboard" element={<AdminDashboard />} />
-        <Route path="/admin/students" element={<StudentManagement />} />
-        <Route path="/admin/teachers" element={<TeacherManagement />} />
-        <Route path="/admin/scheduling" element={<ClassScheduling />} />
-        <Route path="/admin/courses" element={<CourseManagement />} />
-        <Route path="/admin/reports" element={<Reports />} />
-        <Route path="/admin/announcements" element={<Announcements />} />
+        <Route path="/admin/dashboard" element={<PrivateRoute role="admin"><AdminDashboard /></PrivateRoute>} />
+        <Route path="/admin/students" element={<PrivateRoute role="admin"><StudentManagement /></PrivateRoute>} />
+        <Route path="/admin/teachers" element={<PrivateRoute role="admin"><TeacherManagement /></PrivateRoute>} />
+        <Route path="/admin/scheduling" element={<PrivateRoute role="admin"><ClassScheduling /></PrivateRoute>} />
+        <Route path="/admin/courses" element={<PrivateRoute role="admin"><CourseManagement /></PrivateRoute>} />
+        <Route path="/admin/reports" element={<PrivateRoute role="admin"><Reports /></PrivateRoute>} />
+        <Route path="/admin/announcements" element={<PrivateRoute role="admin"><Announcements /></PrivateRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

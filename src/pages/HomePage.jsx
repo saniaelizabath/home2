@@ -1208,12 +1208,30 @@ export default function HomePage() {
               <p style={{ fontSize: 16, color: "#555", marginBottom: 32, maxWidth: 440, lineHeight: 1.8 }}>
                 Join commerce students with live group &amp; individual classes, personal 1-on-1 faculty attention, and progress tracking — all from home.
               </p>
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                <a href="#" className="btn-primary" style={{ fontSize: 15 }}>🔴 Book a Free Trial Class</a>
-                <a href="#chapters" style={{ background: "white", color: "#1a1a2e", padding: "13px 28px", borderRadius: 50, fontSize: 14, fontWeight: 700, border: "2.5px solid #1a1a2e", cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 8, fontFamily: "var(--font-body)", boxShadow: "4px 4px 0 #ddd", transition: "all 0.2s" }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = "translate(-3px,-3px)"; e.currentTarget.style.boxShadow = "7px 7px 0 #ddd"; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = "translate(0,0)"; e.currentTarget.style.boxShadow = "4px 4px 0 #ddd"; }}
-                >Browse Chapters →</a>
+              <div style={{ background: "#f8f9ff", padding: 32, borderRadius: 24, border: "2px solid #eee", boxShadow: "0 10px 30px rgba(0,0,0,0.05)" }}>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 800, color: "#1a1a2e", marginBottom: 20 }}>Book Your Free Trial</h3>
+                <form onSubmit={e => { e.preventDefault(); alert("Free trial booked! We will contact you soon."); }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                    <input type="text" placeholder="Full Name" required style={{ padding: "12px 16px", borderRadius: 12, border: "2px solid #eee", outline: "none", fontSize: 14 }} />
+                    <input type="tel" placeholder="Phone Number" required style={{ padding: "12px 16px", borderRadius: 12, border: "2px solid #eee", outline: "none", fontSize: 14 }} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+                    <select required style={{ padding: "12px 16px", borderRadius: 12, border: "2px solid #eee", outline: "none", fontSize: 14, background: "#fff" }}>
+                      <option value="">Select Subject</option>
+                      <option>Accountancy</option>
+                      <option>Business Studies</option>
+                      <option>Both Subjects</option>
+                    </select>
+                    <select required style={{ padding: "12px 16px", borderRadius: 12, border: "2px solid #eee", outline: "none", fontSize: 14, background: "#fff" }}>
+                      <option value="">Select Class</option>
+                      <option>Class 11</option>
+                      <option>Class 12</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="btn-primary" style={{ width: "100%", padding: "14px", fontSize: 16, border: "none" }}>
+                    🔴 Confirm Free Trial Class
+                  </button>
+                </form>
               </div>
               <p style={{ marginTop: 18, fontSize: 12, color: "#aaa" }}>No commitment · Free trial class · Limited seats per batch</p>
             </div>

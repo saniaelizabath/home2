@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { loginAdmin, loginStudent, loginTeacher } from "../../authService";
 
 const ROLE_META = {
     student: { icon: "🎓", accent: "#3B5BDB", label: "Student", light: "#E8EEFF" },
@@ -24,19 +25,43 @@ export default function LoginPage() {
     const [form, setForm] = useState({ email: "", password: "" });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [msg, setMsg] = useState("");
 
     const handleChange = e => setForm(p => ({ ...p, [e.target.name]: e.target.value }));
 
-    const handleSubmit = e => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError(""); setMsg("");
         if (!form.email || !form.password) { setError("Please fill in all fields."); return; }
-        setError("");
+
         setLoading(true);
-        // Simulate auth — replace with real API call
-        setTimeout(() => {
-            login({ name: form.email.split("@")[0], email: form.email, role });
+        try {
+            let profile;
+
+            if (role === "admin") {
+                // loginAdmin validates credentials instantly (hardcoded check).
+                // Firestore seeding runs in the background inside loginAdmin.
+                profile = await loginAdmin(form.email, form.password);
+
+            } else if (role === "teacher") {
+                // Validates against teacher record stored by admin in Firestore
+                profile = await loginTeacher(form.email, form.password);
+
+            } else {
+                // Student: Firebase Auth + Firestore profile fetch
+                profile = await loginStudent(form.email, form.password);
+            }
+
+            login({ ...profile, role });
             navigate(ROLE_REDIRECT[role]);
-        }, 900);
+        } catch (err) {
+            console.error(err);
+            // Clean up Firebase Auth error codes for display
+            const msg = err.message.replace(/Firebase: |Error \(auth\/.*?\)\./g, "").trim();
+            setError(msg || "Login failed. Please try again.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -71,22 +96,39 @@ export default function LoginPage() {
                     Sign in to access your {meta.label.toLowerCase()} portal
                 </p>
 
+                {/* Role-specific hints */}
+                {role === "admin" && (
+                    <div style={{ background: "#FFF0F0", color: "#FF6B6B", border: "1px solid #ffc2c2", borderRadius: 12, padding: "12px 16px", fontSize: 13, marginBottom: 20 }}>
+                        🛡️ Admin login is restricted. Use your admin credentials.
+                    </div>
+                )}
+                {role === "teacher" && (
+                    <div style={{ background: "#E6FCF5", color: "#20C997", border: "1px solid #b2eed9", borderRadius: 12, padding: "12px 16px", fontSize: 13, marginBottom: 20 }}>
+                        👩‍🏫 Use the email &amp; password provided by your admin.
+                    </div>
+                )}
+
                 {error && (
                     <div style={{ background: "#FFF0F0", color: "#FF6B6B", border: "1px solid #ffc2c2", borderRadius: 12, padding: "12px 16px", fontSize: 14, marginBottom: 20 }}>
                         {error}
+                    </div>
+                )}
+                {msg && (
+                    <div style={{ background: "#E6FCF5", color: "#20C997", border: "1px solid #b2eed9", borderRadius: 12, padding: "12px 16px", fontSize: 14, marginBottom: 20 }}>
+                        {msg}
                     </div>
                 )}
 
                 <form onSubmit={handleSubmit}>
                     {["email", "password"].map(field => (
                         <div key={field} style={{ marginBottom: 20 }}>
-                            <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#444", marginBottom: 8, textTransform: "capitalize" }}>{field}</label>
+                            <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#444", textTransform: "capitalize", marginBottom: 8 }}>{field}</label>
                             <input
                                 name={field} type={field} value={form[field]} onChange={handleChange}
                                 placeholder={field === "email" ? "you@example.com" : "••••••••"}
                                 style={{
                                     width: "100%", padding: "14px 16px", borderRadius: 14, fontSize: 15,
-                                    border: `2px solid #eee`, outline: "none", transition: "border 0.2s",
+                                    border: "2px solid #eee", outline: "none", transition: "border 0.2s",
                                     background: "#fafbff", fontFamily: "var(--font-body)", boxSizing: "border-box",
                                 }}
                                 onFocus={e => e.target.style.border = `2px solid ${meta.accent}`}
@@ -108,14 +150,18 @@ export default function LoginPage() {
                     </button>
                 </form>
 
-                <p style={{ textAlign: "center", marginTop: 24, fontSize: 14, color: "#888" }}>
-                    Don't have an account?{" "}
-                    <Link to={`/signup?role=${role}`} style={{ color: meta.accent, fontWeight: 700, textDecoration: "none" }}>Sign up</Link>
-                </p>
+                {role === "student" && (
+                    <p style={{ textAlign: "center", marginTop: 24, fontSize: 14, color: "#888" }}>
+                        Don't have an account?{" "}
+                        <Link to={`/signup?role=${role}`} style={{ color: meta.accent, fontWeight: 700, textDecoration: "none" }}>Sign up</Link>
+                    </p>
+                )}
                 <p style={{ textAlign: "center", marginTop: 8, fontSize: 13, color: "#bbb" }}>
                     <Link to="/" style={{ color: "#bbb", textDecoration: "none" }}>← Back to home</Link>
                 </p>
             </div>
+
+            <style>{`@keyframes slideUp { from { opacity:0; transform:translateY(20px) } to { opacity:1; transform:none } }`}</style>
         </div>
     );
 }

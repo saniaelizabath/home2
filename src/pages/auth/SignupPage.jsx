@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 
@@ -15,12 +16,19 @@ export default function SignupPage() {
 
     const REGISTER_PATHS = {
         student: "/student/register",
-        teacher: "/teacher/register",
-        admin: "/login?role=admin",
     };
 
+    // Redirect non-students to login
+    useEffect(() => {
+        if (role !== "student") {
+            navigate(`/login?role=${role}`);
+        }
+    }, [role, navigate]);
+
+    if (role !== "student") return null;
+
     // Redirect to role-specific registration
-    const handleContinue = () => navigate(REGISTER_PATHS[role]);
+    const handleContinue = () => navigate(REGISTER_PATHS.student);
 
     return (
         <div style={{
