@@ -2,23 +2,27 @@ import { useState, useEffect } from "react";
 import DashboardLayout from "../../components/shared/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebase";
-import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, getDocs, query, where } from "firebase/firestore";
+
+// ─── Config ──────────────────────────────────────────────────────────────────
 
 const INFO_CONFIG = [
-    { label: "Email", key: "email", icon: "✉️" },
-    { label: "Phone", key: "phone", icon: "📱" },
-    { label: "Class", key: "class", icon: "🏫" },
-    { label: "Course", key: "course", icon: "📚" },
-    { label: "Parent Email", key: "parentEmail", icon: "👨‍👩‍👧" },
-    { label: "Parent Phone", key: "parentPhone", icon: "☎️" },
-    { label: "Favourite Subject", key: "favSubject", icon: "⭐" },
-    { label: "Study Time", key: "studyTime", icon: "🕓" },
-    { label: "Daily Hours", key: "dailyHours", icon: "⏱️", suffix: " hrs/day" },
-    { label: "Study Plan", key: "studyPlan", icon: "🗓️" },
-    { label: "Focus Level", key: "focusLevel", icon: "🎯" },
-    { label: "Current Average", key: "currentAggregate", icon: "📊", suffix: "%" },
-    { label: "Target Aggregate", key: "targetAggregate", icon: "🏆", suffix: "%" },
+    { label: "Email", key: "email", icon: "✉️", editable: false },
+    { label: "Phone", key: "phone", icon: "📱", editable: true, type: "tel" },
+    { label: "Class", key: "class", icon: "🏫", editable: true, type: "select", options: ["Class 11", "Class 12"] },
+    { label: "Course", key: "course", icon: "📚", editable: true, type: "select", options: ["Accountancy", "Business Studies", "Economics", "Both Subjects"] },
+    { label: "Parent Email", key: "parentEmail", icon: "👨‍👩‍👧", editable: true, type: "email" },
+    { label: "Parent Phone", key: "parentPhone", icon: "☎️", editable: true, type: "tel" },
+    { label: "Favourite Subject", key: "favSubject", icon: "⭐", editable: true, type: "select", options: ["Accountancy", "Business Studies", "Economics"] },
+    { label: "Study Time", key: "studyTime", icon: "🕓", editable: true, type: "select", options: ["Morning", "Afternoon", "Evening", "Night"] },
+    { label: "Daily Hours", key: "dailyHours", icon: "⏱️", suffix: " hrs/day", editable: true, type: "number" },
+    { label: "Study Plan", key: "studyPlan", icon: "🗓️", editable: true, type: "select", options: ["Intensive", "Moderate", "Relaxed"] },
+    { label: "Focus Level", key: "focusLevel", icon: "🎯", editable: true, type: "select", options: ["High", "Medium", "Low"] },
+    { label: "Current Average", key: "currentAggregate", icon: "📊", suffix: "%", editable: true, type: "number" },
+    { label: "Target Aggregate", key: "targetAggregate", icon: "🏆", suffix: "%", editable: true, type: "number" },
 ];
+
+const EDITABLE_FIELDS = INFO_CONFIG.filter(f => f.editable);
 
 const SUB_META = {
     "Accountancy": { bg: "#EEF2FF", color: "#4F46E5", icon: "📒" },
@@ -31,25 +35,137 @@ function normaliseSubject(raw = "") {
     if (r.includes("account")) return "Accountancy";
     if (r.includes("business")) return "Business Studies";
     if (r.includes("econ")) return "Economics";
-    // "Both Subjects" means student takes both — pick primary favSubject instead
     return "";
 }
 
-/* Normalise class value to match exactly what CourseManagement stores */
 function normaliseClass(raw = "") {
     const r = raw.toLowerCase();
     if (r.includes("11")) return "Class 11";
     if (r.includes("12")) return "Class 12";
-    return raw; // already in correct form
+    return raw;
 }
 
+// ─── Edit Modal ───────────────────────────────────────────────────────────────
+
+function EditModal({ data, onSave, onClose, saving }) {
+    const [form, setForm] = useState(() => {
+        const init = {};
+        EDITABLE_FIELDS.forEach(f => { init[f.key] = data[f.key] ?? ""; });
+        return init;
+    });
+
+    const set = (key, val) => setForm(p => ({ ...p, [key]: val }));
+
+    const inputStyle = {
+        width: "100%", padding: "10px 14px", borderRadius: 12,
+        border: "2px solid #eee", fontSize: 14, outline: "none",
+        fontFamily: "Inter, Poppins, sans-serif", boxSizing: "border-box",
+        transition: "border 0.2s", background: "#fafbff",
+    };
+
+    return (
+        <>
+            {/* Backdrop */}
+            <div
+                onClick={onClose}
+                style={{
+                    position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
+                    zIndex: 1000, backdropFilter: "blur(3px)",
+                }}
+            />
+            {/* Modal */}
+            <div style={{
+                position: "fixed", top: "50%", left: "50%",
+                transform: "translate(-50%, -50%)",
+                zIndex: 1001, background: "#fff", borderRadius: 24,
+                padding: "32px 28px", width: "min(600px, 95vw)",
+                maxHeight: "85vh", overflowY: "auto",
+                boxShadow: "0 24px 64px rgba(0,0,0,0.22)",
+                animation: "slideUp 0.25s cubic-bezier(.4,0,.2,1)",
+            }}>
+                <style>{`@keyframes slideUp{from{opacity:0;transform:translate(-50%,-46%)}to{opacity:1;transform:translate(-50%,-50%)}}`}</style>
+
+                {/* Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                    <div>
+                        <div style={{ fontSize: 20, fontWeight: 900, color: "#1a1a2e" }}>Edit Profile</div>
+                        <div style={{ color: "#888", fontSize: 13, marginTop: 2 }}>Update your personal & academic info</div>
+                    </div>
+                    <button onClick={onClose} style={{
+                        width: 36, height: 36, borderRadius: "50%", border: "none",
+                        background: "#f3f4f6", cursor: "pointer", fontSize: 18, color: "#666",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>✕</button>
+                </div>
+
+                {/* Fields grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 18px" }}>
+                    {EDITABLE_FIELDS.map(field => (
+                        <div key={field.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <label style={{ fontSize: 12, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                {field.icon} {field.label}
+                            </label>
+                            {field.type === "select" ? (
+                                <select
+                                    value={form[field.key]}
+                                    onChange={e => set(field.key, e.target.value)}
+                                    style={{ ...inputStyle, appearance: "auto" }}
+                                    onFocus={e => e.target.style.border = "2px solid #3B5BDB"}
+                                    onBlur={e => e.target.style.border = "2px solid #eee"}
+                                >
+                                    <option value="">— Select —</option>
+                                    {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                            ) : (
+                                <input
+                                    type={field.type || "text"}
+                                    value={form[field.key]}
+                                    onChange={e => set(field.key, e.target.value)}
+                                    placeholder={field.label}
+                                    style={inputStyle}
+                                    onFocus={e => e.target.style.border = "2px solid #3B5BDB"}
+                                    onBlur={e => e.target.style.border = "2px solid #eee"}
+                                />
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 12, marginTop: 28, justifyContent: "flex-end" }}>
+                    <button onClick={onClose} disabled={saving} style={{
+                        padding: "11px 24px", borderRadius: 14, border: "2px solid #eee",
+                        background: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#555",
+                    }}>Cancel</button>
+                    <button onClick={() => onSave(form)} disabled={saving} style={{
+                        padding: "11px 28px", borderRadius: 14, border: "none",
+                        background: saving ? "#ccc" : "linear-gradient(135deg,#3B5BDB,#4c6ef5)",
+                        color: "#fff", cursor: saving ? "not-allowed" : "pointer",
+                        fontWeight: 800, fontSize: 14,
+                        boxShadow: saving ? "none" : "0 6px 20px rgba(59,91,219,0.35)",
+                        transition: "all 0.2s",
+                    }}>
+                        {saving ? "Saving…" : "Save Changes"}
+                    </button>
+                </div>
+            </div>
+        </>
+    );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function StudentProfile() {
-    const { user } = useAuth();
+    const { user, login } = useAuth();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [syllabus, setSyllabus] = useState(null);
     const [syllabusLoading, setSyllabusLoading] = useState(false);
     const [syllabusOpen, setSyllabusOpen] = useState(false);
+
+    const [editOpen, setEditOpen] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saveMsg, setSaveMsg] = useState("");
 
     useEffect(() => {
         if (!user?.uid) { setLoading(false); return; }
@@ -60,43 +176,56 @@ export default function StudentProfile() {
     }, [user]);
 
     const data = profile ?? user ?? {};
-    // These are safe render-time derivations for display only
     const classVal = normaliseClass(data.class || data.classType || "");
     const subject = normaliseSubject(data.favSubject || data.course || "");
 
     /* Fetch syllabus whenever profile finishes loading */
     useEffect(() => {
-        // Wait until profile is actually loaded (not still null during initial render)
         if (loading) return;
         const d = profile ?? user ?? {};
         const cls = normaliseClass(d.class || d.classType || "");
         const subj = normaliseSubject(d.favSubject || d.course || "");
-
-        console.log("[Syllabus] looking up:", { subj, cls, raw_class: d.class, raw_subject: d.favSubject || d.course });
-
-        if (!cls || !subj) {
-            setSyllabusLoading(false);
-            return;
-        }
+        if (!cls || !subj) { setSyllabusLoading(false); return; }
         setSyllabusLoading(true);
         const fetch = async () => {
             try {
-                // 1. Exact match
                 let snap = await getDocs(query(collection(db, "courses"),
                     where("subject", "==", subj), where("class", "==", cls)));
-                // 2. Fallback: course covers "Both" classes
                 if (snap.empty) {
                     snap = await getDocs(query(collection(db, "courses"),
                         where("subject", "==", subj), where("class", "==", "Both")));
                 }
-                console.log("[Syllabus] found:", snap.size, "docs");
                 setSyllabus(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() });
             } catch (e) { console.error("[Syllabus error]", e); }
             finally { setSyllabusLoading(false); }
         };
         fetch();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [profile, loading]);  // re-run once profile doc is loaded
+    }, [profile, loading]);
+
+    /* Save profile edits */
+    const handleSave = async (form) => {
+        if (!user?.uid) return;
+        setSaving(true);
+        try {
+            // Strip empty strings before saving
+            const updates = {};
+            Object.entries(form).forEach(([k, v]) => { if (v !== "") updates[k] = v; });
+            await updateDoc(doc(db, "students", user.uid), updates);
+            const updated = { ...data, ...updates };
+            setProfile(updated);
+            // Keep localStorage in sync so AuthContext stays fresh
+            login({ ...user, ...updates });
+            setSaveMsg("✅ Profile updated!");
+            setEditOpen(false);
+        } catch (e) {
+            console.error("Save error:", e);
+            setSaveMsg("❌ Failed to save. Try again.");
+        } finally {
+            setSaving(false);
+            setTimeout(() => setSaveMsg(""), 3500);
+        }
+    };
 
     if (loading) return (
         <DashboardLayout>
@@ -113,15 +242,50 @@ export default function StudentProfile() {
     return (
         <DashboardLayout>
             <div style={{ maxWidth: 860 }}>
-                <div style={{ marginBottom: 32 }}>
-                    <h1 style={{ fontSize: 30, fontWeight: 900, color: "#1a1a2e", marginBottom: 6 }}>My Profile</h1>
-                    <p style={{ color: "#888", fontSize: 15 }}>Your personal details and enrolled course syllabus</p>
+                {/* Page header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
+                    <div>
+                        <h1 style={{ fontSize: 30, fontWeight: 900, color: "#1a1a2e", marginBottom: 6 }}>My Profile</h1>
+                        <p style={{ color: "#888", fontSize: 15 }}>Your personal details and enrolled course syllabus</p>
+                    </div>
+                    <button
+                        onClick={() => setEditOpen(true)}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 8, padding: "11px 22px",
+                            borderRadius: 14, border: "none", cursor: "pointer", fontWeight: 800,
+                            fontSize: 14, background: "linear-gradient(135deg,#3B5BDB,#4c6ef5)",
+                            color: "#fff", boxShadow: "0 6px 20px rgba(59,91,219,0.3)",
+                            transition: "transform 0.15s, box-shadow 0.15s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 28px rgba(59,91,219,0.4)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(59,91,219,0.3)"; }}
+                    >
+                        ✏️ Edit Profile
+                    </button>
                 </div>
+
+                {/* Save feedback toast */}
+                {saveMsg && (
+                    <div style={{
+                        background: saveMsg.startsWith("✅") ? "#E6FCF5" : "#FFF0F0",
+                        color: saveMsg.startsWith("✅") ? "#0D9488" : "#FF6B6B",
+                        border: `1px solid ${saveMsg.startsWith("✅") ? "#b2eed9" : "#ffc2c2"}`,
+                        borderRadius: 12, padding: "12px 18px", marginBottom: 20,
+                        fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                        {saveMsg}
+                    </div>
+                )}
 
                 {/* Profile card */}
                 <div style={{ background: "#fff", borderRadius: 24, padding: 28, boxShadow: "0 4px 24px rgba(0,0,0,0.07)", marginBottom: 24 }}>
                     <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-                        <div style={{ width: 80, height: 80, borderRadius: "50%", background: "linear-gradient(135deg,#3B5BDB,#7048e8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, color: "#fff", fontWeight: 900, flexShrink: 0 }}>
+                        <div style={{
+                            width: 80, height: 80, borderRadius: "50%",
+                            background: "linear-gradient(135deg,#3B5BDB,#7048e8)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 32, color: "#fff", fontWeight: 900, flexShrink: 0,
+                        }}>
                             {data.name?.[0]?.toUpperCase() ?? "S"}
                         </div>
                         <div>
@@ -141,7 +305,7 @@ export default function StudentProfile() {
                         const raw = data[item.key];
                         if (!raw) return null;
                         return (
-                            <div key={item.key} style={{ background: "#fff", borderRadius: 18, padding: "18px 20px", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
+                            <div key={item.key} style={{ background: "#fff", borderRadius: 18, padding: "18px 20px", boxShadow: "0 2px 12px rgba(0,0,0,0.05)", position: "relative" }}>
                                 <div style={{ fontSize: 20, marginBottom: 8 }}>{item.icon}</div>
                                 <div style={{ fontSize: 11, fontWeight: 700, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{item.label}</div>
                                 <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1a2e", wordBreak: "break-word" }}>{item.suffix ? `${raw}${item.suffix}` : raw}</div>
@@ -228,6 +392,16 @@ export default function StudentProfile() {
                     )}
                 </div>
             </div>
+
+            {/* Edit Modal */}
+            {editOpen && (
+                <EditModal
+                    data={data}
+                    onSave={handleSave}
+                    onClose={() => setEditOpen(false)}
+                    saving={saving}
+                />
+            )}
         </DashboardLayout>
     );
 }

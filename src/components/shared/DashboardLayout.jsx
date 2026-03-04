@@ -109,20 +109,28 @@ export default function DashboardLayout({ children }) {
               height: 36,
               borderRadius: 10,
               flexShrink: 0,
-              background: colors.accent,
+              overflow: "hidden",
+              background: "transparent",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 18,
-              fontWeight: 800,
             }}
           >
-            L
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+            >
+              <source src="/logo.webm" type="video/webm" />
+              <source src="/logo.mp4" type="video/mp4" />
+            </video>
           </div>
           {(!collapsed || isMobile) && (
             <div>
               <div style={{ color: "#fff", fontWeight: 800, fontSize: 15, fontFamily: "var(--font-display)" }}>
-                LedgerLearn
+                Finova Academy
               </div>
               <div
                 style={{
@@ -280,7 +288,7 @@ export default function DashboardLayout({ children }) {
         <header
           style={{
             background: "#fff",
-            padding: isMobile ? "0 14px" : "0 32px",
+            padding: isMobile ? "0 14px" : "0 28px",
             height: 64,
             display: "flex",
             alignItems: "center",
@@ -289,9 +297,11 @@ export default function DashboardLayout({ children }) {
             zIndex: 90,
             boxShadow: "0 1px 0 rgba(0,0,0,0.06)",
             justifyContent: "space-between",
+            gap: 12,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          {/* ── LEFT: hamburger (mobile) + animated logo + brand name ── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             {isMobile && (
               <button
                 onClick={() => setMobileMenuOpen(true)}
@@ -303,28 +313,80 @@ export default function DashboardLayout({ children }) {
                   border: "1px solid #e2e8f0",
                   background: "#fff",
                   cursor: "pointer",
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: 700,
                   color: "#1a1a2e",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                =
+                ☰
               </button>
             )}
-            <div
-              style={{
+
+            {/* Animated logo */}
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              overflow: "hidden",
+              flexShrink: 0,
+              background: colors.accent,
+              boxShadow: `0 0 0 2px ${colors.accent}33`,
+            }}>
+              <video
+                src="/logo.mp4"
+                autoPlay
+                loop
+                muted
+                playsInline
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
+            </div>
+
+            {/* Brand name */}
+            <div>
+              <div style={{
                 color: "#1a1a2e",
-                fontWeight: 700,
-                fontSize: isMobile ? 14 : 16,
+                fontWeight: 800,
+                fontSize: isMobile ? 13 : 16,
+                fontFamily: "var(--font-display)",
+                letterSpacing: "-0.02em",
+                lineHeight: 1.1,
+                whiteSpace: "nowrap",
+              }}>
+                Finova Academy
+              </div>
+              {!isMobile && (
+                <div style={{
+                  color: colors.accent,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
+                }}>
+                  {colors.label}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── RIGHT: welcome greeting + role badge ── */}
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 14, minWidth: 0 }}>
+            {!isMobile && (
+              <div style={{
+                color: "#555",
+                fontWeight: 600,
+                fontSize: 14,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-              }}
-            >
-              Welcome back, <span style={{ color: colors.accent }}>{user?.name ?? "User"} 👋</span>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: 10 }}>
+                maxWidth: 280,
+              }}>
+                Welcome back, <span style={{ color: colors.accent, fontWeight: 700 }}>{user?.name ?? "User"} 👋</span>
+              </div>
+            )}
             <div
               style={{
                 background: colors.light,
@@ -336,6 +398,7 @@ export default function DashboardLayout({ children }) {
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
                 whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
             >
               {isMobile ? role : colors.label}

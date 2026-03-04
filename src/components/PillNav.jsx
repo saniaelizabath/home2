@@ -97,7 +97,7 @@ const PillNav = ({
     window.addEventListener("resize", onResize);
 
     if (document.fonts?.ready) {
-      document.fonts.ready.then(layout).catch(() => {});
+      document.fonts.ready.then(layout).catch(() => { });
     }
 
     const menu = mobileMenuRef.current;
@@ -252,28 +252,44 @@ const PillNav = ({
         aria-label="Primary"
         style={cssVars}
       >
+        {/* ── LEFT: Brand — video logo + Finova Academy ── */}
+        <a className="pill-brand" href="/" aria-label="Finova Academy Home">
+          <div className="pill-logo-video-wrap">
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+            >
+              <source src="/logo.webm" type="video/webm" />
+              <source src="/logo.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <div className="pill-brand-text">
+            <span className="pill-brand-name">Finova</span>
+            <span className="pill-brand-academy">Academy</span>
+          </div>
+        </a>
+
+        {/* ── RIGHT: Nav pills (desktop) ── */}
+        {/* Hidden pill-logo kept for GSAP logo ref */}
         {isRouterLink(items?.[0]?.href) ? (
-          <Link
+          <a
             className="pill-logo"
-            to={items[0].href}
+            href={items?.[0]?.href || "/"}
             aria-label="Home"
             onMouseEnter={handleLogoEnter}
-            role="menuitem"
-            ref={(el) => {
-              logoRef.current = el;
-            }}
+            ref={(el) => { logoRef.current = el; }}
           >
             <img src={logo} alt={logoAlt} ref={logoImgRef} />
-          </Link>
+          </a>
         ) : (
           <a
             className="pill-logo"
             href={items?.[0]?.href || "/"}
             aria-label="Home"
             onMouseEnter={handleLogoEnter}
-            ref={(el) => {
-              logoRef.current = el;
-            }}
+            ref={(el) => { logoRef.current = el; }}
           >
             <img src={logo} alt={logoAlt} ref={logoImgRef} />
           </a>

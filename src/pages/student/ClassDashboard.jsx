@@ -42,9 +42,24 @@ const isClassPast = (dateStr, timeStr) => {
   let h = parseInt(hour, 10);
   if (ampm === "PM" && h < 12) h += 12;
   if (ampm === "AM" && h === 12) h = 0;
-
   const classDate = new Date(`${dateStr}T${pad(h)}:${pad(minute)}:00`);
   return classDate < new Date();
+};
+
+// Returns: "before" | "active" | "expired"
+// Join link is active from scheduled start time up to 1 hour after
+const getJoinStatus = (dateStr, timeStr) => {
+  if (!dateStr || !timeStr) return "before";
+  const { hour, minute, ampm } = parseTime(timeStr);
+  let h = parseInt(hour, 10);
+  if (ampm === "PM" && h < 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+  const classStart = new Date(`${dateStr}T${pad(h)}:${pad(minute)}:00`);
+  const classEnd = new Date(classStart.getTime() + 60 * 60 * 1000); // +1 hour
+  const now = new Date();
+  if (now < classStart) return "before";
+  if (now <= classEnd) return "active";
+  return "expired";
 };
 
 
@@ -81,11 +96,11 @@ export default function ClassDashboard() {
   const [uploading, setUploading] = useState({});
   const [uploadProgress, setUploadProgress] = useState({});
   const [submitted, setSubmitted] = useState({});
-  const [screenLockEnabled, setScreenLockEnabled] = useState(false);
   const [classesLoading, setClassesLoading] = useState(true);
 
   const [assignTab, setAssignTab] = useState("active");
   const [testTab, setTestTab] = useState("active");
+  const [classTab, setClassTab] = useState("today");
 
   /* Identify student's batch type + name */
   const studentClassType = user?.classType || user?.class || user?.batch || null;
@@ -267,8 +282,25 @@ export default function ClassDashboard() {
     });
   };
 
-  const todayStr = now.toISOString().split("T")[0];
-  const upcomingClasses = classes.filter(c => !isClassPast(c.date, c.time)).slice(0, 6);
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  const getFilteredClasses = () => {
+    if (classTab === "today") {
+      return classes
+        .filter(c => c.date === todayStr)
+        .sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    }
+    if (classTab === "upcoming") {
+      return classes
+        .filter(c => c.date > todayStr)
+        .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    }
+    // past
+    return classes
+      .filter(c => c.date < todayStr)
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  };
+  const filteredClasses = getFilteredClasses();
   const dayClasses = selectedDay ? getClassesForDay(selectedDay) : [];
 
   const navBtn = {
@@ -395,12 +427,22 @@ export default function ClassDashboard() {
                   <div style={{ fontSize: 11, color: "#6B7280", marginTop: 3 }}>
                     {c.subject && `📚 ${c.subject}  `}🕐 {c.time}  👨‍🏫 {c.teacherName}
                   </div>
-                  {c.meetingLink && (
-                    <a href={c.meetingLink} target="_blank" rel="noreferrer"
-                      style={{ ...chipBlue, marginTop: 8, fontSize: 11, padding: "5px 12px", display: "inline-block" }}>
-                      🔗 Join
-                    </a>
-                  )}
+                  {c.meetingLink && (() => {
+                    const js = getJoinStatus(c.date, c.time);
+                    if (js === "active") {
+                      return (
+                        <a href={c.meetingLink} target="_blank" rel="noreferrer"
+                          style={{ ...chipBlue, marginTop: 8, fontSize: 11, padding: "5px 12px", display: "inline-block" }}>
+                          🔗 Join
+                        </a>
+                      );
+                    }
+                    return (
+                      <span style={{ marginTop: 8, fontSize: 11, padding: "5px 12px", display: "inline-block", borderRadius: 20, fontWeight: 700, background: "#F3F4F6", color: "#9CA3AF", cursor: "default" }}>
+                        {js === "before" ? "⏳ Not yet" : "⌛ Expired"}
+                      </span>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -417,50 +459,86 @@ export default function ClassDashboard() {
           </div>
         </div>
 
-        {/* Upcoming classes */}
-        <div style={{ background: "#fff", borderRadius: 24, padding: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.07)" }}>
-          <div style={cardTitle}>⏰ Upcoming Classes</div>
+        {/* Classes panel */}
+        <div style={{ background: "#fff", borderRadius: 24, padding: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.07)", display: "flex", flexDirection: "column" }}>
+          {/* Header + tabs */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "#1F2937" }}>📅 Classes</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["today", "upcoming", "past"].map(tab => (
+                <button key={tab} onClick={() => setClassTab(tab)} style={tabBtn(classTab === tab)}>
+                  {tab === "today" ? "Today" : tab === "upcoming" ? "Upcoming" : "Past"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Today badge */}
+          {classTab === "today" && (
+            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14, fontWeight: 600 }}>
+              🗓️ {now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
+            </div>
+          )}
+
           {classesLoading ? (
             <div style={{ textAlign: "center", padding: 32, color: "#9CA3AF" }}>
               <div style={{ width: 32, height: 32, border: "3px solid #E8EEFF", borderTop: "3px solid #3B5BDB", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 10px" }} />
               <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
               Loading…
             </div>
-          ) : upcomingClasses.length === 0 ? (
-            <div style={{ color: "#9CA3AF", fontSize: 14, padding: "24px 0", textAlign: "center" }}>
+          ) : filteredClasses.length === 0 ? (
+            <div style={{ color: "#9CA3AF", fontSize: 14, padding: "24px 0", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
               <div style={{ fontSize: 36, marginBottom: 10 }}>🗓️</div>
-              No upcoming classes scheduled yet.
+              {classTab === "today" ? "No classes scheduled for today."
+                : classTab === "upcoming" ? "No upcoming classes scheduled yet."
+                  : "No past classes found."}
             </div>
-          ) : upcomingClasses.map((c, i) => (
+          ) : filteredClasses.map((c, i) => (
             <div key={c.id} style={{
               display: "flex", alignItems: "center", gap: 14, padding: "14px 0",
-              borderBottom: i < upcomingClasses.length - 1 ? "1px solid #F3F4F6" : "none",
+              borderBottom: i < filteredClasses.length - 1 ? "1px solid #F3F4F6" : "none",
             }}>
               {/* Date tile */}
               <div style={{
                 minWidth: 46, textAlign: "center",
-                background: "linear-gradient(135deg,#3B5BDB,#6366f1)",
+                background: c.date === todayStr
+                  ? "linear-gradient(135deg,#20C997,#12b886)"
+                  : classTab === "past"
+                    ? "#F3F4F6"
+                    : "linear-gradient(135deg,#3B5BDB,#6366f1)",
                 borderRadius: 12, padding: "7px 4px", flexShrink: 0,
               }}>
-                <div style={{ fontSize: 17, fontWeight: 900, color: "#fff", lineHeight: 1 }}>
+                <div style={{ fontSize: 17, fontWeight: 900, color: c.date === todayStr || classTab !== "past" ? "#fff" : "#6B7280", lineHeight: 1 }}>
                   {c.date ? new Date(c.date + "T00:00:00").getDate() : "—"}
                 </div>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase" }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: c.date === todayStr || classTab !== "past" ? "rgba(255,255,255,0.8)" : "#9CA3AF", textTransform: "uppercase" }}>
                   {c.date ? MONTHS[new Date(c.date + "T00:00:00").getMonth()].slice(0, 3) : ""}
                 </div>
               </div>
+
+              {/* Info */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: "#1F2937", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: classTab === "past" ? "#6B7280" : "#1F2937", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {c.topic}
                 </div>
-                <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
                   👨‍🏫 {c.teacherName} · 🕐 {c.time}
                   {c.subject && ` · 📚 ${c.subject}`}
                 </div>
               </div>
-              {c.meetingLink && (
-                <a href={c.meetingLink} target="_blank" rel="noreferrer" style={chipBlue}>Join</a>
-              )}
+
+              {/* Join button — time-gated */}
+              {c.meetingLink && (() => {
+                const js = getJoinStatus(c.date, c.time);
+                if (js === "active") {
+                  return <a href={c.meetingLink} target="_blank" rel="noreferrer" style={chipBlue}>Join</a>;
+                }
+                return (
+                  <span style={{ padding: "8px 16px", borderRadius: 20, background: "#F3F4F6", color: "#9CA3AF", fontSize: 12, fontWeight: 700, cursor: "default", whiteSpace: "nowrap" }}>
+                    {js === "before" ? "⏳ Soon" : "⌛ Ended"}
+                  </span>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -525,15 +603,6 @@ export default function ClassDashboard() {
               <button onClick={() => setTestTab("past")} style={tabBtn(testTab === "past")}>Past</button>
             </div>
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, fontSize: 12, color: "#667", fontWeight: 700, cursor: "pointer" }}>
-            <input type="checkbox" checked={screenLockEnabled} onChange={e => setScreenLockEnabled(e.target.checked)} />
-            Optional screen lock during tests
-          </label>
-          {screenLockEnabled && testTab === "active" && (
-            <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, background: "#FFF9DB", border: "1px solid #ffe38a", fontSize: 12, color: "#8A5A00", fontWeight: 600 }}>
-              Screen lock enabled for active tests.
-            </div>
-          )}
           {displayedTests.length === 0 ? (
             <div style={{ color: "#9CA3AF", fontSize: 14, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 0" }}>No {testTab} tests right now.</div>
           ) : displayedTests.map((t, i) => {
