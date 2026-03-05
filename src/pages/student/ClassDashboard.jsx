@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../components/shared/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
-import { db, storage } from "../../firebase";
+import { db } from "../../firebase";
 import {
   collection, query, where, onSnapshot,
   getDocs, addDoc, serverTimestamp,
 } from "firebase/firestore";
-
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import useIsMobile from "../../hooks/useIsMobile";
+
+const chipLink = {
+  padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+  textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4,
+};
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June",
@@ -93,14 +96,16 @@ export default function ClassDashboard() {
   const [classes, setClasses] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [tests, setTests] = useState([]);
-  const [uploading, setUploading] = useState({});
-  const [uploadProgress, setUploadProgress] = useState({});
-  const [submitted, setSubmitted] = useState({});
+  const [notes, setNotes] = useState([]);
+  const [submitted, setSubmitted] = useState({});   // { [itemId]: submissionData }
+  const [submitLinks, setSubmitLinks] = useState({}); // { [itemId]: typed URL string }
+  const [submitting, setSubmitting] = useState({});  // { [itemId]: bool }
   const [classesLoading, setClassesLoading] = useState(true);
 
   const [assignTab, setAssignTab] = useState("active");
   const [testTab, setTestTab] = useState("active");
   const [classTab, setClassTab] = useState("today");
+  const [noteTab, setNoteTab] = useState("all");
 
   /* Identify student's batch type + name */
   const studentClassType = user?.classType || user?.class || user?.batch || null;
@@ -212,57 +217,71 @@ export default function ClassDashboard() {
       });
   }, [studentClassType]);
 
-  /* ── Submissions check ── */
+  /* ── Notes ── */
   useEffect(() => {
-    if (!user?.uid || !assignments.length) return;
+    if (!studentClassType) return;
+    getDocs(query(collection(db, "notes"), where("class", "in", [studentClassType, "Both"])))
+      .then(snap => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        data.sort((a, b) => {
+          const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const db2 = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return db2 - da;
+        });
+        setNotes(data);
+      })
+      .catch(() => {
+        getDocs(collection(db, "notes"))
+          .then(snap => {
+            setNotes(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(n => n.class === studentClassType || n.class === "Both"));
+          });
+      });
+  }, [studentClassType]);
+
+  /* ── Submissions check — covers assignments + tests ── */
+  useEffect(() => {
+    if (!user?.uid) return;
     getDocs(query(collection(db, "submissions"), where("studentId", "==", user.uid)))
       .then(snap => {
         const map = {};
-        snap.docs.forEach(d => { map[d.data().assignmentId] = d.data(); });
+        snap.docs.forEach(d => {
+          const data = d.data();
+          const key = data.itemId || data.assignmentId || data.testId;
+          if (key) map[key] = { ...data, docId: d.id };
+        });
         setSubmitted(map);
       }).catch(console.error);
-  }, [user?.uid, assignments]);
+  }, [user?.uid]);
 
-  /* ── File upload ── */
-  const handleUpload = async (assignmentId, file, isLate) => {
-    if (!file || !user?.uid) return;
-    if (file.size > 30 * 1024 * 1024) { alert("File is too large! Please keep it under 30MB."); return; }
+  /* ── Submit Drive link (assignments + tests) ── */
+  const handleSubmitDriveLink = async (itemId, type, isLate) => {
+    const driveLink = (submitLinks[itemId] || "").trim();
+    if (!driveLink) { alert("Please paste your Google Drive link first."); return; }
+    if (!driveLink.startsWith("http")) { alert("Please enter a valid URL starting with http."); return; }
+    if (!user?.uid) return;
 
-    setUploading(p => ({ ...p, [assignmentId]: true }));
-    setUploadProgress(p => ({ ...p, [assignmentId]: 0 }));
-
+    setSubmitting(p => ({ ...p, [itemId]: true }));
     try {
-      const storageRef = ref(storage, `submissions/${user.uid}/${assignmentId}/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      await new Promise((resolve, reject) => {
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setUploadProgress(p => ({ ...p, [assignmentId]: progress }));
-          },
-          (error) => reject(error),
-          async () => {
-            const fileURL = await getDownloadURL(uploadTask.snapshot.ref);
-            const newSub = {
-              assignmentId, studentId: user.uid,
-              classType: studentClassType,
-              fileURL, fileName: file.name,
-              submittedAt: serverTimestamp(), marks: null, feedback: null,
-              status: isLate ? "Late" : "On Time"
-            };
-            await addDoc(collection(db, "submissions"), newSub);
-            setSubmitted(p => ({ ...p, [assignmentId]: newSub }));
-            resolve();
-          }
-        );
-      });
+      const payload = {
+        itemId,
+        studentId: user.uid,
+        studentName: studentName || user?.email || "Student",
+        classType: studentClassType,
+        type,           // "assignment" | "test"
+        driveLink,
+        submittedAt: serverTimestamp(),
+        status: isLate ? "Late" : "On Time",
+        marks: null, feedback: null,
+        // legacy keys for backward compat
+        ...(type === "assignment" ? { assignmentId: itemId } : { testId: itemId }),
+      };
+      await addDoc(collection(db, "submissions"), payload);
+      setSubmitted(p => ({ ...p, [itemId]: payload }));
+      setSubmitLinks(p => ({ ...p, [itemId]: "" }));
     } catch (e) {
-      console.error("Upload failed:", e);
-      alert("Upload failed: " + e.message);
+      alert("Submission failed: " + e.message);
     } finally {
-      setUploading(p => ({ ...p, [assignmentId]: false }));
+      setSubmitting(p => ({ ...p, [itemId]: false }));
     }
   };
 
@@ -544,13 +563,57 @@ export default function ClassDashboard() {
         </div>
       </div>
 
-      {/* ── Bottom row: Assignments + Tests ── */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 24 }}>
+      {/* ── Bottom row: Notes + Assignments + Tests ── */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 24, marginBottom: 24 }}>
+
+        {/* Notes */}
+        <div style={{ background: "#fff", borderRadius: 24, padding: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.07)", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+            <div style={{ ...cardTitle, marginBottom: 0 }}>📝 Study Notes</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => setNoteTab("all")} style={tabBtn(noteTab === "all")}>All</button>
+              <button onClick={() => setNoteTab("drive")} style={tabBtn(noteTab === "drive")}>Drive Only</button>
+            </div>
+          </div>
+          {notes.length === 0 ? (
+            <div style={{ color: "#9CA3AF", fontSize: 14, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "20px 0", textAlign: "center" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📝</div>
+              No notes uploaded for your class yet.
+            </div>
+          ) : notes
+            .filter(n => noteTab === "drive" ? !!n.driveLink : true)
+            .map((n, i, arr) => (
+              <div key={n.id} style={{ padding: "13px 0", borderBottom: i < arr.length - 1 ? "1px solid #F3F4F6" : "none" }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: "#E8EEFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>📄</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#1F2937" }}>{n.title}</div>
+                    {n.description && <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{n.description}</div>}
+                    {n.deadline && (
+                      <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                        🗓 {new Date(n.deadline?.toDate ? n.deadline.toDate() : n.deadline).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                      {n.driveLink && (
+                        <a href={n.driveLink} target="_blank" rel="noreferrer"
+                          style={{ ...chipLink, background: "#EEF2FF", color: "#4F46E5" }}>🔗 Drive Link</a>
+                      )}
+                      {n.fileURL && (
+                        <a href={n.fileURL} target="_blank" rel="noreferrer"
+                          style={{ ...chipLink, background: "#E8EEFF", color: "#3B5BDB" }}>📎 View PDF</a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+        </div>
 
         {/* Assignments */}
         <div style={{ background: "#fff", borderRadius: 24, padding: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.07)", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
-            <div style={{ ...cardTitle, marginBottom: 0 }}>📝 Assignments</div>
+            <div style={{ ...cardTitle, marginBottom: 0 }}>📋 Assignments</div>
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => setAssignTab("active")} style={tabBtn(assignTab === "active")}>Active</button>
               <button onClick={() => setAssignTab("past")} style={tabBtn(assignTab === "past")}>Past</button>
@@ -561,43 +624,72 @@ export default function ClassDashboard() {
           ) : displayedAssignments.map((a, i) => {
             const dDate = a.dueDate?.toDate ? a.dueDate.toDate() : (a.dueDate ? new Date(a.dueDate) : null);
             const isPast = dDate && dDate < new Date();
+            const sub = submitted[a.id];
             return (
               <div key={a.id} style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "13px 0",
+                padding: "13px 0",
                 borderBottom: i < displayedAssignments.length - 1 ? "1px solid #F3F4F6" : "none",
               }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: "#1F2937", textDecoration: (isPast && !submitted[a.id]) ? "line-through" : "none", opacity: (isPast && !submitted[a.id]) ? 0.6 : 1 }}>{a.title}</div>
-                  <div style={{ fontSize: 12, color: isPast ? "#FF6B6B" : "#9CA3AF", fontWeight: isPast ? 600 : 400 }}>
-                    {dDate ? `Due: ${dDate.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : "No due date"}
-                  </div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#1F2937", textDecoration: (isPast && !sub) ? "line-through" : "none", opacity: (isPast && !sub) ? 0.6 : 1 }}>{a.title}</div>
+                {a.description && <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{a.description}</div>}
+                <div style={{ fontSize: 12, color: isPast ? "#FF6B6B" : "#9CA3AF", fontWeight: isPast ? 600 : 400, marginTop: 2 }}>
+                  {dDate ? `Due: ${dDate.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : "No due date"}
                 </div>
-                {submitted[a.id] ? (
-                  <div style={{ ...chipGreen, background: submitted[a.id].status === "Late" ? "#FFF4E6" : "#E6FCF5", color: submitted[a.id].status === "Late" ? "#E8590C" : "#20C997" }}>
-                    {submitted[a.id].status === "Late" ? "Late ✓" : "Submitted ✓"}
-                  </div>
-                ) : uploading[a.id] ? (
-                  <div style={{ padding: "8px 14px", borderRadius: 20, background: "#f0f4ff", border: "1px solid #E8EEFF", display: "flex", flexDirection: "column", gap: 5, width: 120 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#3B5BDB", textAlign: "center" }}>Uploading {uploadProgress[a.id] ? Math.round(uploadProgress[a.id]) : 0}%</div>
-                    <div style={{ width: "100%", height: 4, background: "#E5E7EB", borderRadius: 2, overflow: "hidden" }}>
-                      <div style={{ width: `${uploadProgress[a.id] || 0}%`, height: "100%", background: "#3B5BDB", transition: "width 0.2s" }} />
+                {/* Teacher's material links */}
+                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  {a.driveLink && (
+                    <a href={a.driveLink} target="_blank" rel="noreferrer"
+                      style={{ ...chipLink, background: "#EEF2FF", color: "#4F46E5" }}>🔗 Assignment Link</a>
+                  )}
+                  {a.fileURL && (
+                    <a href={a.fileURL} target="_blank" rel="noreferrer"
+                      style={{ ...chipLink, background: "#E8EEFF", color: "#3B5BDB" }}>📎 View PDF</a>
+                  )}
+                </div>
+                {/* ── Student submission area ── */}
+                <div style={{ marginTop: 10, padding: "10px 12px", background: sub ? "#F0FDF4" : "#F8F9FF", borderRadius: 12, border: `1.5px solid ${sub ? "#86EFAC" : "#E8EEFF"}` }}>
+                  {sub ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sub.status === "Late" ? "#E8590C" : "#16A34A" }}>
+                        {sub.status === "Late" ? "⚠️ Submitted Late" : "✅ Submitted"}
+                      </span>
+                      <a href={sub.driveLink} target="_blank" rel="noreferrer"
+                        style={{ ...chipLink, background: "#DCFCE7", color: "#16A34A", fontSize: 11 }}>🔗 Your Submission</a>
                     </div>
-                  </div>
-                ) : (
-                  <label style={{ ...(isPast ? chipOrange : chipBlue), cursor: "pointer" }}>
-                    {isPast ? "Upload Late" : "Upload"}
-                    <input type="file" accept=".pdf,.doc,.docx" style={{ display: "none" }} onChange={e => handleUpload(a.id, e.target.files[0], isPast)} />
-                  </label>
-                )}
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        📤 {isPast ? "Submit Late" : "Submit Answer"} — paste your Google Drive link
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          value={submitLinks[a.id] || ""}
+                          onChange={e => setSubmitLinks(p => ({ ...p, [a.id]: e.target.value }))}
+                          placeholder="https://drive.google.com/…"
+                          style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 12, outline: "none", fontFamily: "inherit" }}
+                        />
+                        <button
+                          onClick={() => handleSubmitDriveLink(a.id, "assignment", isPast)}
+                          disabled={submitting[a.id]}
+                          style={{ padding: "8px 14px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 12, cursor: "pointer", background: isPast ? "#FF6B6B" : "#3B5BDB", color: "#fff", whiteSpace: "nowrap", opacity: submitting[a.id] ? 0.7 : 1 }}>
+                          {submitting[a.id] ? "Submitting…" : isPast ? "Submit Late" : "Submit"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })}
         </div>
 
-        {/* Tests */}
+      </div>
+
+      {/* ── Tests Row (full-width on its own row) ── */}
+      <div>
         <div style={{ background: "#fff", borderRadius: 24, padding: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.07)", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
-            <div style={{ ...cardTitle, marginBottom: 0 }}>📋 Tests & Quizzes</div>
+            <div style={{ ...cardTitle, marginBottom: 0 }}>🧪 Tests &amp; Quizzes</div>
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => setTestTab("active")} style={tabBtn(testTab === "active")}>Active</button>
               <button onClick={() => setTestTab("past")} style={tabBtn(testTab === "past")}>Past</button>
@@ -610,23 +702,66 @@ export default function ClassDashboard() {
             const toDate = t.availableTo?.toDate ? t.availableTo.toDate() : (t.availableTo ? new Date(t.availableTo) : null);
             const isPast = toDate && toDate < new Date();
             const isFuture = fromDate && fromDate > new Date();
+            const isWritten = t.isWritten || !t.link; // written test: toggled by teacher OR no online link
+            const sub = submitted[t.id];
 
             return (
               <div key={t.id} style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "14px 0",
+                padding: "14px 0",
                 borderBottom: i < displayedTests.length - 1 ? "1px solid #F3F4F6" : "none",
               }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: "#1F2937", opacity: isPast ? 0.6 : 1, textDecoration: isPast ? "line-through" : "none" }}>{t.title}</div>
-                  <div style={{ fontSize: 12, color: isPast ? "#FF6B6B" : "#9CA3AF", fontWeight: isPast ? 600 : 400, marginTop: 3 }}>
-                    {fromDate ? `From: ${fromDate.toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}` : "Available now"}
-                    {toDate ? ` · Until: ${toDate.toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}` : ""}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: "#1F2937", opacity: isPast ? 0.6 : 1, textDecoration: isPast ? "line-through" : "none" }}>{t.title}</span>
+                      {isWritten && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 8, background: "#FFF4E6", color: "#E8590C" }}>✍️ Written</span>}
+                    </div>
+                    {t.description && <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{t.description}</div>}
+                    <div style={{ fontSize: 12, color: isPast ? "#FF6B6B" : "#9CA3AF", fontWeight: isPast ? 600 : 400, marginTop: 3 }}>
+                      {fromDate ? `From: ${fromDate.toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}` : "Available now"}
+                      {toDate ? ` · Until: ${toDate.toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}` : ""}
+                    </div>
                   </div>
+                  {/* Online test attempt button */}
+                  {t.link && (
+                    isPast ? <div style={{ padding: "5px 14px", borderRadius: 20, background: "#FFF0F0", color: "#FF6B6B", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>Closed</div>
+                      : isFuture ? <div style={{ padding: "5px 14px", borderRadius: 20, background: "#F3F4F6", color: "#6B7280", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>Not Yet</div>
+                        : <a href={t.link} target="_blank" rel="noreferrer" style={{ ...chipOrange, flexShrink: 0 }}>Attempt</a>
+                  )}
                 </div>
-                {t.link && (
-                  isPast ? <div style={{ padding: "5px 14px", borderRadius: 20, background: "#FFF0F0", color: "#FF6B6B", fontSize: 12, fontWeight: 700 }}>Closed</div>
-                    : isFuture ? <div style={{ padding: "5px 14px", borderRadius: 20, background: "#F3F4F6", color: "#6B7280", fontSize: 12, fontWeight: 700 }}>Not Yet</div>
-                      : <a href={t.link} target="_blank" rel="noreferrer" style={chipOrange}>Attempt</a>
+                {/* ── Written test submission area ── */}
+                {isWritten && (
+                  <div style={{ marginTop: 10, padding: "10px 12px", background: sub ? "#F0FDF4" : "#F8F9FF", borderRadius: 12, border: `1.5px solid ${sub ? "#86EFAC" : "#E8EEFF"}` }}>
+                    {sub ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: sub.status === "Late" ? "#E8590C" : "#16A34A" }}>
+                          {sub.status === "Late" ? "⚠️ Submitted Late" : "✅ Submitted"}
+                        </span>
+                        <a href={sub.driveLink} target="_blank" rel="noreferrer"
+                          style={{ ...chipLink, background: "#DCFCE7", color: "#16A34A", fontSize: 11 }}>🔗 Your Answer</a>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          📤 {isPast ? "Submit Late" : "Submit Answer"} — paste your Google Drive link
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            value={submitLinks[t.id] || ""}
+                            onChange={e => setSubmitLinks(p => ({ ...p, [t.id]: e.target.value }))}
+                            placeholder="https://drive.google.com/…"
+                            style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 12, outline: "none", fontFamily: "inherit" }}
+                          />
+                          <button
+                            onClick={() => handleSubmitDriveLink(t.id, "test", isPast)}
+                            disabled={submitting[t.id]}
+                            style={{ padding: "8px 14px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 12, cursor: "pointer", background: isPast ? "#FF6B6B" : "#E8590C", color: "#fff", whiteSpace: "nowrap", opacity: submitting[t.id] ? 0.7 : 1 }}>
+                            {submitting[t.id] ? "Submitting…" : isPast ? "Submit Late" : "Submit"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )
