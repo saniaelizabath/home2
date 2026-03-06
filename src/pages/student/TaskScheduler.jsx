@@ -376,12 +376,17 @@ export default function TaskScheduler() {
             <style>{`
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+                .responsive-grid-tasks { display: grid; grid-template-columns: 1fr 1.4fr; gap: 24px; }
+                .responsive-grid-mood { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+                @media (max-width: 1024px) {
+                    .responsive-grid-tasks, .responsive-grid-mood { grid-template-columns: 1fr; }
+                }
             `}</style>
 
             {/* ─── STEP 1: TASKS ─── */}
             {step === "tasks" && (
                 <div style={{ animation: "fadeIn 0.3s ease" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 24 }}>
+                    <div className="responsive-grid-tasks">
 
                         {/* Add Task Form */}
                         <div style={card()}>
@@ -536,7 +541,7 @@ export default function TaskScheduler() {
             {/* ─── STEP 2: MOOD ─── */}
             {step === "mood" && (
                 <div style={{ animation: "fadeIn 0.3s ease" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                    <div className="responsive-grid-mood">
 
                         {/* Mood sliders */}
                         <div style={card()}>
