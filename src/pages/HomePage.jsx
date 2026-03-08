@@ -389,6 +389,24 @@ function HeroSection() {
   const textRefs = useRef([]);
   const intervalRef = useRef(null);
   const doodleRefs = useRef([]);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    setDeferredPrompt(null);
+  };
 
   // Headline rotate: blur-scale animation
   useEffect(() => {
@@ -495,6 +513,15 @@ function HeroSection() {
               onMouseEnter={e => { e.currentTarget.style.transform = "translate(-3px,-3px)"; e.currentTarget.style.boxShadow = "7px 7px 0 #dde"; }}
               onMouseLeave={e => { e.currentTarget.style.transform = "translate(0,0)"; e.currentTarget.style.boxShadow = "4px 4px 0 #dde"; }}
             >📖 Browse Chapters</a>
+            {deferredPrompt && (
+              <button
+                onClick={handleInstallClick}
+                className="btn-primary"
+                style={{ background: "#20C997", borderColor: "rgba(0,0,0,0.1)", boxShadow: "0 4px 24px rgba(32,201,151,0.4)" }}
+              >
+                📱 Install on my Device
+              </button>
+            )}
           </div>
 
           {/* Stat pills */}
