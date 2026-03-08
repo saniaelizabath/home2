@@ -79,7 +79,8 @@ export default function StudentManagement() {
     /* ── Send Report Email ── */
     const [sendingId, setSendingId] = useState(null);
     const sendReport = async (student) => {
-        if (!confirm(`Send progress report to ${student.email}?`)) return;
+        const targetEmail = student.parentEmail || student.email;
+        if (!confirm(`Send progress report to ${targetEmail}?`)) return;
         setSendingId(student.id);
         try {
             // Fetch records
@@ -226,7 +227,7 @@ export default function StudentManagement() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    email: student.email,
+                    email: targetEmail,
                     subject: "Student Progress Report - Finova Academy",
                     htmlContent,
                     pdfAttachment: pdfBase64
