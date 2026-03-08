@@ -922,6 +922,7 @@ function TestimonialsSection() {
 
 export default function HomePage() {
   const location = useLocation();
+  const [isSendingTrial, setIsSendingTrial] = useState(false);
 
   return (
     <>
@@ -1201,16 +1202,42 @@ export default function HomePage() {
               </p>
               <div style={{ background: "#f8f9ff", padding: 32, borderRadius: 24, border: "2px solid #eee", boxShadow: "0 10px 30px rgba(0,0,0,0.05)" }}>
                 <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 800, color: "#1a1a2e", marginBottom: 20 }}>Book Your Free Trial</h3>
-                <form onSubmit={e => {
+                <form onSubmit={async e => {
                   e.preventDefault();
-                  const data = new FormData(e.target);
+
+                  if (isSendingTrial) return;
+
+                  setIsSendingTrial(true);
+                  const form = e.target;
+                  const data = new FormData(form);
                   const name = data.get("name");
                   const phone = data.get("phone");
                   const email = data.get("email");
                   const subject = data.get("subject");
                   const cls = data.get("class");
-                  const body = `Name: ${name}%0D%0APhone: ${phone}%0D%0AEmail: ${email}%0D%0ASubject: ${subject}%0D%0AClass: ${cls}`;
-                  window.location.href = `mailto:commerceacademy2026@gmail.com?subject=New Free Trial Booking&body=${body}`;
+
+                  try {
+                    const response = await fetch('/api/send-trial', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({ name, phone, email, subject, cls }),
+                    });
+
+                    if (response.ok) {
+                      alert('Trial booking request sent successfully!');
+                      form.reset();
+                    } else {
+                      const errorData = await response.json();
+                      alert(`Failed to send request: ${errorData.message}`);
+                    }
+                  } catch (error) {
+                    console.error('Error sending trial request:', error);
+                    alert('An error occurred. Please try again later.');
+                  } finally {
+                    setIsSendingTrial(false);
+                  }
                 }}>
                   <div className="cta-form-row">
                     <input name="name" type="text" placeholder="Full Name" required style={{ padding: "12px 16px", borderRadius: 12, border: "2px solid #eee", outline: "none", fontSize: 14, width: "100%" }} />
@@ -1232,8 +1259,8 @@ export default function HomePage() {
                       <option>Class 12</option>
                     </select>
                   </div>
-                  <button type="submit" className="btn-primary" style={{ width: "100%", padding: "14px", fontSize: 16, border: "none" }}>
-                    🔴 Confirm Free Trial Class
+                  <button type="submit" disabled={isSendingTrial} className="btn-primary" style={{ width: "100%", padding: "14px", fontSize: 16, border: "none", opacity: isSendingTrial ? 0.7 : 1, cursor: isSendingTrial ? 'not-allowed' : 'pointer' }}>
+                    {isSendingTrial ? '⏳ Sending...' : '🔴 Confirm Free Trial Class'}
                   </button>
                 </form>
               </div>
