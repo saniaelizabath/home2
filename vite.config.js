@@ -7,7 +7,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logoimg.jpeg'],
+      devOptions: {
+        enabled: true
+      },
       manifest: {
         name: 'Finova Academy - CBSE Commerce Tuition',
         short_name: 'Finova Academy',

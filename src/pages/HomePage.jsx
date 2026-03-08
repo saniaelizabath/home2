@@ -390,8 +390,13 @@ function HeroSection() {
   const intervalRef = useRef(null);
   const doodleRefs = useRef([]);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+      setIsStandalone(true);
+    }
+
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -401,11 +406,19 @@ function HeroSection() {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response to the install prompt: ${outcome}`);
-    setDeferredPrompt(null);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`User response to the install prompt: ${outcome}`);
+      setDeferredPrompt(null);
+    } else {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (isIOS) {
+        alert("To install on iOS:\n1. Tap the Share icon (square with an arrow)\n2. Select 'Add to Home Screen'");
+      } else {
+        alert("To install this app:\nCheck your browser's address bar for an Install icon, or look for 'Install' in your browser menu. Make sure to accept the prompt if it appears.");
+      }
+    }
   };
 
   // Headline rotate: blur-scale animation
@@ -513,7 +526,7 @@ function HeroSection() {
               onMouseEnter={e => { e.currentTarget.style.transform = "translate(-3px,-3px)"; e.currentTarget.style.boxShadow = "7px 7px 0 #dde"; }}
               onMouseLeave={e => { e.currentTarget.style.transform = "translate(0,0)"; e.currentTarget.style.boxShadow = "4px 4px 0 #dde"; }}
             >📖 Browse Chapters</a>
-            {deferredPrompt && (
+            {!isStandalone && (
               <button
                 onClick={handleInstallClick}
                 className="btn-primary"
